@@ -12,37 +12,45 @@ public class ProductModel {
 	private static final String TABLE_NAME = "Prodotto";
 
 	public synchronized void doSave(ProductBean product) throws SQLException {
+	    Connection connection = null;
+	    PreparedStatement preparedStatement = null;
 
-		Connection connection = null;
-		PreparedStatement preparedStatement = null;
+	    String insertSQL = "INSERT INTO Prodotto (nome, descrizione, prezzo, speseSpedizione, emailVenditore, tag, nomeTipologia, model, dataAnnuncio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, current_date())";
 
-		String insertSQL = "INSERT INTO Prodotto (nome, descrizione, prezzo, speseSpedizione, emailVenditore, tag, nomeTipologia, model, dataAnnuncio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, current_date())";
+	    try {
+	        connection = DriverManagerConnectionPool.getConnection();
+	        preparedStatement = connection.prepareStatement(insertSQL);
 
-		try {
-			connection = DriverManagerConnectionPool.getConnection();
-			preparedStatement = connection.prepareStatement(insertSQL);
-			preparedStatement.setString(1, product.getNome());
-			preparedStatement.setString(2, product.getDescrizione());
-			preparedStatement.setDouble(3, product.getPrezzo());
-			preparedStatement.setDouble(4, product.getSpedizione());
-			preparedStatement.setString(5, product.getEmail());
-			preparedStatement.setString(6, product.getTag());
-			preparedStatement.setString(7, product.getTipologia());
-			preparedStatement.setString(8, product.getImmagine());
+	        // Sanitize inputs to prevent XSS
+	        String nomeSanitized = Sanitizer.sanitize(product.getNome());
+	        String descrizioneSanitized = Sanitizer.sanitize(product.getDescrizione());
+	        String emailSanitized = Sanitizer.sanitize(product.getEmail());
+	        String tipologiaSanitized = Sanitizer.sanitize(product.getTipologia());
 
-			preparedStatement.executeUpdate();
+	        preparedStatement.setString(1, nomeSanitized);
+	        preparedStatement.setString(2, descrizioneSanitized);
+	        preparedStatement.setDouble(3, product.getPrezzo());
+	        preparedStatement.setDouble(4, product.getSpedizione());
+	        preparedStatement.setString(5, emailSanitized);
+	        preparedStatement.setString(6, product.getTag());
+	        preparedStatement.setString(7, tipologiaSanitized);
+	        preparedStatement.setString(8, product.getImmagine());
 
-			connection.commit();
-		} finally {
-			try {
-				if (preparedStatement != null)
-					preparedStatement.close();
-			} finally {
-				if (connection != null)
-					DriverManagerConnectionPool.releaseConnection(connection);
-			}
-		}
+	        preparedStatement.executeUpdate();
+	        connection.commit();
+	    } finally {
+	        try {
+	            if (preparedStatement != null) {
+	                preparedStatement.close();
+	            }
+	        } finally {
+	            if (connection != null) {
+	                DriverManagerConnectionPool.releaseConnection(connection);
+	            }
+	        }
+	    }
 	}
+
 
 	public synchronized ProductBean doRetrieveByKey(int code) throws SQLException {
 		Connection connection = null;
@@ -201,36 +209,47 @@ public class ProductModel {
 			}
 		}
 	}
-	
+
 	public synchronized void updateProduct(ProductBean bean) {
-		String sql = "UPDATE Prodotto SET nome = ?, descrizione = ?, prezzo = ?, speseSpedizione = ?, tag = ?, nomeTipologia = ? WHERE codice = ?";
-		Connection con = null;
-		PreparedStatement ps = null;
-		
-		try {
-			con = DriverManagerConnectionPool.getConnection();
-			ps = con.prepareStatement(sql);
-			
-			ps.setString(1, bean.getNome());
-			ps.setString(2, bean.getDescrizione());
-			ps.setDouble(3, bean.getPrezzo());
-			ps.setDouble(4, bean.getSpedizione());
-			ps.setString(5, bean.getTag());
-			ps.setString(6, bean.getTipologia());
-			ps.setInt(7, bean.getCodice());
-			
-			ps.executeUpdate();
-			con.commit();
-		}
-		catch (Exception e) {
-			
-		}
-		finally {
-			if (con != null) {
-				DriverManagerConnectionPool.releaseConnection(con);
-			}
-		}
+	    String sql = "UPDATE Prodotto SET nome = ?, descrizione = ?, prezzo = ?, speseSpedizione = ?, tag = ?, nomeTipologia = ? WHERE codice = ?";
+	    Connection con = null;
+	    PreparedStatement ps = null;
+	    
+	    try {
+	        con = DriverManagerConnectionPool.getConnection();
+	        ps = con.prepareStatement(sql);
+	        
+	        // Sanitize inputs to prevent XSS
+	        String nomeSanitized = Sanitizer.sanitize(bean.getNome());
+	        String descrizioneSanitized = Sanitizer.sanitize(bean.getDescrizione());
+	        String tipologiaSanitized = Sanitizer.sanitize(bean.getTipologia());
+
+	        ps.setString(1, nomeSanitized);
+	        ps.setString(2, descrizioneSanitized);
+	        ps.setDouble(3, bean.getPrezzo());
+	        ps.setDouble(4, bean.getSpedizione());
+	        ps.setString(5, bean.getTag());
+	        ps.setString(6, tipologiaSanitized);
+	        ps.setInt(7, bean.getCodice());
+	        
+	        ps.executeUpdate();
+	        con.commit();
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    } finally {
+	        if (ps != null) {
+	            try {
+	                ps.close();
+	            } catch (Exception e) {
+	                e.printStackTrace();
+	            }
+	        }
+	        if (con != null) {
+	            DriverManagerConnectionPool.releaseConnection(con);
+	        }
+	    }
 	}
+
 	
 	public synchronized RecensioneBean getRecensione(int codiceProdotto, String email) {
 		String sql2 = "SELECT votazione, testo FROM Recensione WHERE codiceProdotto = ? AND emailCliente = ?";
@@ -291,4 +310,19 @@ public class ProductModel {
 			}
 		}
 	}
+	
+	public class Sanitizer {
+	    public static String sanitize(String input) {
+	        if (input == null) {
+	            return null;
+	        }
+	        return input.replaceAll("&", "&amp;")
+	                    .replaceAll("<", "&lt;")
+	                    .replaceAll(">", "&gt;")
+	                    .replaceAll("\"", "&quot;")
+	                    .replaceAll("'", "&#x27;")
+	                    .replaceAll("/", "&#x2F;");
+	    }
+	}
+
 }
